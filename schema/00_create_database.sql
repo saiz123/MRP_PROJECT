@@ -1,0 +1,3 @@
+DROP DATABASE IF EXISTS mrp_new;
+CREATE DATABASE mrp_new;
+USE mrp_new;
