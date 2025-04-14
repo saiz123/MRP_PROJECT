@@ -22,38 +22,69 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# # Navbar
-# menu = st.sidebar.radio("Navigation", ["🏠 Home", "👤 Profile"])
-
-# # **🔹 Home Section**
-# if menu == "🏠 Home":
+# Navbar
 st.markdown("<div class='navbar'>Disease Prediction Dashboard</div>", unsafe_allow_html=True)
 
-# **🔹 Patient Input Form**
+# Patient Input Form
 st.markdown("<h2 class='sub-header'>Patient Information</h2>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 
 with col1:
     patient_name = st.text_input("Patient Name", "John Doe")
-    age = st.slider("Age", 1, 100, 30)
+    age = st.text_input("Age", "30")
     gender = st.selectbox("Gender", ["Male", "Female"])
 
 with col2:
     bmi = st.number_input("BMI", 10.0, 40.0, 22.5, step=0.1)
-    blood_pressure = st.slider("Blood Pressure", 90, 180, 120)
+    blood_pressure = st.text_input("Blood Pressure", "120")
     cholesterol = st.selectbox("Cholesterol", ["Normal", "High"])
 
 with col3:
-    heart_rate = st.slider("Heart Rate", 50, 150, 80)
+    heart_rate = st.text_input("Heart Rate", "80")
     smoker = st.selectbox("Smoker", ["No", "Yes"])
     diabetes = st.selectbox("Diabetes", ["No", "Yes"])
 
-# **🔹 Dummy Prediction Logic (To be replaced with ML)**
-predicted_disease = np.random.choice(["Hypertension", "Diabetes", "Heart Disease", "None"])
-probability = np.random.randint(70, 99)
-suggested_action = np.random.choice(["Lifestyle Changes", "Medication", "Regular Checkups", "No Immediate Action"])
+# Convert inputs
+try:
+    age = int(age)
+except:
+    age = 30
 
-# **🔹 Prediction Results**
+try:
+    blood_pressure = int(blood_pressure)
+except:
+    blood_pressure = 120
+
+try:
+    heart_rate = int(heart_rate)
+except:
+    heart_rate = 80
+
+# Determine prediction
+symptoms = [cholesterol, smoker, diabetes]
+has_symptom = any(symptom == "Yes" or symptom == "High" for symptom in symptoms)
+
+predicted_disease = "None"
+probability = 0
+suggested_action = "No Immediate Action"
+
+# Rule-based logic
+if cholesterol == "High" or smoker == "Yes" or blood_pressure > 130:
+    predicted_disease = "Hypertension"
+    probability = np.random.randint(70, 90)
+    suggested_action = "Reduce salt intake, regular exercise, monitor BP"
+
+elif diabetes == "Yes" or bmi > 30:
+    predicted_disease = "Diabetes"
+    probability = np.random.randint(70, 90)
+    suggested_action = "Monitor blood sugar, healthy diet, medication"
+
+elif heart_rate > 100 or (smoker == "Yes" and blood_pressure > 130):
+    predicted_disease = "Heart Disease"
+    probability = np.random.randint(70, 90)
+    suggested_action = "Cardio tests, lifestyle changes, consult a cardiologist"
+
+# Prediction Results
 st.markdown("<h2 class='sub-header'>Predicted Disease Risk</h2>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 
@@ -61,7 +92,7 @@ col1.markdown(f"<div class='prediction-box red'>Predicted Disease: {predicted_di
 col2.markdown(f"<div class='prediction-box blue'>Probability: {probability}%</div>", unsafe_allow_html=True)
 col3.markdown(f"<div class='prediction-box green'>Recommended Action: {suggested_action}</div>", unsafe_allow_html=True)
 
-# **🔹 Generate Dynamic Data**
+# Generate Dummy Data
 def generate_dummy_data():
     np.random.seed(42)
     num_samples = 100
@@ -87,7 +118,7 @@ def generate_dummy_data():
 
 dummy_data = generate_dummy_data()
 
-# **🔹 Dynamic Charts**
+# Dynamic Charts
 st.markdown("<h2 class='sub-header'>Dynamic Charts (Based on User Input)</h2>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 
@@ -115,7 +146,7 @@ with col3:
     plt.ylabel("Risk Score")
     st.pyplot(fig)
 
-# **🔹 Additional Insightful Visualizations**
+# Additional Insights
 st.markdown("<h2 class='sub-header'>Additional Insights</h2>", unsafe_allow_html=True)
 col1, col2 = st.columns(2)
 
@@ -127,7 +158,6 @@ with col1:
     plt.ylabel("Frequency")
     st.pyplot(fig)
 
-# **New Chart 2: Age vs Blood Pressure Heatmap**
 with col2:
     st.subheader("📊 Age vs Blood Pressure Heatmap")
     fig, ax = plt.subplots(figsize=(5, 3))
@@ -137,11 +167,9 @@ with col2:
     plt.ylabel("Blood Pressure")
     st.pyplot(fig)
 
-    
-# **🔹 Machine Learning Insights**
+# Machine Learning Insights
 st.markdown("<h2 class='sub-header'>Machine Learning Insights</h2>", unsafe_allow_html=True)
 
-# Dummy Feature Importance (To be replaced with actual ML model)
 st.subheader("Feature Importance")
 feature_importance = pd.DataFrame({
     "Feature": ["Age", "BMI", "Blood Pressure", "Heart Rate", "Smoker", "Diabetes"],
@@ -153,7 +181,7 @@ sns.barplot(x="Importance", y="Feature", data=feature_importance, palette="coolw
 plt.xlabel("Importance Score")
 st.pyplot(fig)
 
-# Dummy Model Evaluation Metrics (Placeholder for actual model)
+# Model Evaluation Metrics
 st.subheader("Model Evaluation Metrics")
 col1, col2, col3 = st.columns(3)
 
@@ -165,70 +193,6 @@ col1.metric("Accuracy", f"{accuracy:.2f}%")
 col2.metric("Precision", f"{precision:.2f}%")
 col3.metric("Recall", f"{recall:.2f}%")
 
-# Future Placeholder: Model Predictions
+# Future Placeholder
 st.subheader("Future Predictions")
 st.markdown("🔹 This section will be updated with real-time predictions once the ML model is fully integrated.")
-
-
-
-# # **🔹 Profile Section**
-# elif menu == "👤 Profile":
-    # st.markdown("<div class='header'>User Profile</div>", unsafe_allow_html=True)
-
-    # # Profile Image & Basic Info
-    # col1, col2 = st.columns([1, 4])
-
-    # with col1:
-    #     st.image("https://www.vhv.rs/dpng/d/15-155087_dummy-image-of-user-hd-png-download.png", caption="User Photo", use_container_width=True)
-
-    # with col2:
-    #     st.markdown("### **John Doe**")
-    #     st.markdown("**Age:** 45  &nbsp; | &nbsp;  **Gender:** Male")
-    #     st.markdown("**Email:** johndoe@example.com")
-    #     st.markdown("**Phone:** +1-234-567-8901")
-    #     st.markdown("**Address:** 123 Health St, Wellness City, USA")
-
-    # st.markdown("---")
-
-    # # Medical History
-    # st.markdown("<h3 class='sub-header'>🩺 Medical History</h3>", unsafe_allow_html=True)
-    # st.markdown("- **Blood Pressure:** Slightly high (130/85)")
-    # st.markdown("- **Cholesterol Level:** Normal")
-    # st.markdown("- **Smoker:** No")
-    # st.markdown("- **Diabetes:** No")
-    # st.markdown("- **Past Conditions:** Mild hypertension (Managed)")
-    
-    # st.markdown("---")
-
-    # # Recent Health Reports
-    # st.markdown("<h3 class='sub-header'>📊 Recent Health Reports</h3>", unsafe_allow_html=True)
-    # col1, col2, col3 = st.columns(3)
-
-    # col1.metric("BMI", "24.5", "Normal")
-    # col2.metric("Blood Sugar", "95 mg/dL", "Healthy")
-    # col3.metric("Heart Rate", "78 bpm", "Normal")
-
-    # st.markdown("---")
-
-    # # Lifestyle & Habits
-    # st.markdown("<h3 class='sub-header'>🏋️ Lifestyle & Habits</h3>", unsafe_allow_html=True)
-    # col1, col2 = st.columns(2)
-
-    # with col1:
-    #     st.markdown("**Exercise Routine:** 3-4 times per week")
-    #     st.markdown("**Diet Preference:** Balanced (Low Sugar, High Protein)")
-    #     st.markdown("**Sleep Duration:** 7-8 hours per night")
-
-    # with col2:
-    #     st.markdown("**Water Intake:** ~2L per day")
-    #     st.markdown("**Alcohol Consumption:** Occasional")
-    #     st.markdown("**Stress Level:** Moderate")
-
-    # st.markdown("---")
-
-    # # Next Health Checkup
-    # st.markdown("<h3 class='sub-header'>📅 Next Health Checkup</h3>", unsafe_allow_html=True)
-    # st.markdown("**Upcoming Appointment:** May 15, 2025")
-    # st.markdown("**Doctor:** Dr. Sarah Thompson (General Physician)")
-    # st.markdown("**Clinic:** Wellness Medical Center, USA")
-
