@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from utils import rule_based_prediction
 
 # Set Page Config
 st.set_page_config(page_title="Disease Prediction Dashboard", layout="wide")
@@ -30,19 +31,19 @@ st.markdown("<h2 class='sub-header'>Patient Information</h2>", unsafe_allow_html
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    patient_name = st.text_input("Patient Name", "John Doe")
     age = st.text_input("Age", "30")
     gender = st.selectbox("Gender", ["Male", "Female"])
+    bmi = st.number_input("BMI", 10.0, 40.0, 22.5, step=0.1)
 
 with col2:
-    bmi = st.number_input("BMI", 10.0, 40.0, 22.5, step=0.1)
-    blood_pressure = st.text_input("Blood Pressure", "120")
+    blood_pressure = st.text_input("Systolic Blood Pressure", "120")
+    disatolic_blood_pressure = st.text_input("Diastolic Blood Pressure", "120")
     cholesterol = st.selectbox("Cholesterol", ["Normal", "High"])
 
 with col3:
     heart_rate = st.text_input("Heart Rate", "80")
     smoker = st.selectbox("Smoker", ["No", "Yes"])
-    diabetes = st.selectbox("Diabetes", ["No", "Yes"])
+    diabetes = st.selectbox("High Glucose Level ?", ["No", "Yes"])
 
 # Convert inputs
 try:
@@ -68,21 +69,10 @@ predicted_disease = "None"
 probability = 0
 suggested_action = "No Immediate Action"
 
-# Rule-based logic
-if cholesterol == "High" or smoker == "Yes" or blood_pressure > 130:
-    predicted_disease = "Hypertension"
-    probability = np.random.randint(70, 90)
-    suggested_action = "Reduce salt intake, regular exercise, monitor BP"
+predicted_disease, probability, suggested_action = rule_based_prediction(
+    age, bmi, blood_pressure, cholesterol, smoker, diabetes, heart_rate
+)
 
-elif diabetes == "Yes" or bmi > 30:
-    predicted_disease = "Diabetes"
-    probability = np.random.randint(70, 90)
-    suggested_action = "Monitor blood sugar, healthy diet, medication"
-
-elif heart_rate > 100 or (smoker == "Yes" and blood_pressure > 130):
-    predicted_disease = "Heart Disease"
-    probability = np.random.randint(70, 90)
-    suggested_action = "Cardio tests, lifestyle changes, consult a cardiologist"
 
 # Prediction Results
 st.markdown("<h2 class='sub-header'>Predicted Disease Risk</h2>", unsafe_allow_html=True)
@@ -169,17 +159,6 @@ with col2:
 
 # Machine Learning Insights
 st.markdown("<h2 class='sub-header'>Machine Learning Insights</h2>", unsafe_allow_html=True)
-
-st.subheader("Feature Importance")
-feature_importance = pd.DataFrame({
-    "Feature": ["Age", "BMI", "Blood Pressure", "Heart Rate", "Smoker", "Diabetes"],
-    "Importance": np.random.rand(6)
-}).sort_values(by="Importance", ascending=False)
-
-fig, ax = plt.subplots(figsize=(6, 3))
-sns.barplot(x="Importance", y="Feature", data=feature_importance, palette="coolwarm")
-plt.xlabel("Importance Score")
-st.pyplot(fig)
 
 # Model Evaluation Metrics
 st.subheader("Model Evaluation Metrics")
