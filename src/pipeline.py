@@ -1,175 +1,84 @@
 import pandas as pd
-import mysql.connector
-import os
-from datetime import datetime
-import numpy as np
 
-# Database configuration
-DB_PARAMS = {
-    "host": "127.0.0.1",
-    "user": "root",
-    "password": "password",
-    "database": "mrp_new"
+# Load data
+patients = pd.read_csv("files/patients.csv")
+observations = pd.read_csv("files/observations.csv")
+conditions = pd.read_csv("files/conditions.csv")
+
+# STEP 1: Select relevant patient info
+patients_df = patients[["Id", "BIRTHDATE", "GENDER", "RACE", "ETHNICITY"]]
+
+# STEP 2: Filter for relevant observations
+relevant_obs_codes = {
+    "8480-6": "Systolic_BP",         # Systolic BP
+    "8462-4": "Diastolic_BP",        # Diastolic BP
+    "39156-5": "BMI",                # Body Mass Index
+    "72166-2": "Smoking_Status"      # Smoking status
 }
 
-# CSV File Paths
-CSV_FOLDER = "files"
+obs_filtered = observations[observations["CODE"].isin(relevant_obs_codes.keys())]
+obs_filtered["ObservationName"] = obs_filtered["CODE"].map(relevant_obs_codes)
 
-# CSV to MySQL Table Mapping
-CSV_TABLE_MAPPING = {
-    "patients.csv": "patients",
-    "medical_history.csv": "medical_history",
-    "prescriptions.csv": "prescriptions",
-    "lab_results.csv": "lab_results",
-    "treatment_recommendations.csv": "treatment_recommendations",
-    "encounters.csv": "encounters"
-}
+# Pivot so each patient has one row
+obs_pivot = obs_filtered.pivot_table(
+    index="PATIENT",
+    columns="ObservationName",
+    values="VALUE",
+    aggfunc="last"
+).reset_index()
 
-# CSV Column Renaming to Match MySQL Schema
-CSV_TABLE_COLUMN_MAPPING = {
-    "patients.csv": {
-        "Id": "patient_id", "BIRTHDATE": "birthdate", "DEATHDATE": "deathdate",
-        "GENDER": "gender", "RACE": "race", "ETHNICITY": "ethnicity",
-        "ADDRESS": "address", "CITY": "city", "STATE": "state",
-        "ZIP": "zip", "INCOME": "income"
-    },
-    "encounters.csv": {
-        "Id": "encounter_id", "PATIENT": "patient_id", "ORGANIZATION": "organization",
-        "PROVIDER": "provider", "PAYER": "payer", "ENCOUNTERCLASS": "encounter_class",
-        "CODE": "code", "DESCRIPTION": "description", "BASE_ENCOUNTER_COST": "base_encounter_cost",
-        "TOTAL_CLAIM_COST": "total_claim_cost", "PAYER_COVERAGE": "payer_coverage",
-        "REASONCODE": "reason_code", "REASONDESCRIPTION": "reason_description",
-        "START": "start_date", "STOP": "stop_date"
-    },
-    "medical_history.csv": {
-        "Id": "history_id", "PATIENT": "patient_id", "ENCOUNTER": "encounter_id",
-        "CODE": "condition_code", "DESCRIPTION": "condition_description",
-        "DATE": "diagnosis_date"
-    },
-    "lab_results.csv": {
-        "Id": "lab_id", "PATIENT": "patient_id", "ENCOUNTER": "encounter_id",
-        "CODE": "test_code", "DESCRIPTION": "test_description",
-        "VALUE": "result_value", "UNITS": "units", "DATE": "test_date"
-    },
-    "prescriptions.csv": {
-        "Id": "prescription_id", "PATIENT": "patient_id", "ENCOUNTER": "encounter_id",
-        "CODE": "medication_code", "DESCRIPTION": "medication_description",
-        "START": "start_date", "STOP": "end_date", "BASE_COST": "base_cost",
-        "TOTAL_COST": "total_cost"
-    },
-    "treatment_recommendations.csv": {
-        "Id": "recommendation_id", "PATIENT": "patient_id",
-        "TREATMENT": "recommended_treatment", "CONFIDENCE_SCORE": "confidence_score",
-        "DATE": "generated_date"
-    }
-}
+obs_pivot.rename(columns={"PATIENT": "Id"}, inplace=True)
 
-def fix_date_format(date_str):
-    """ Convert date string to MySQL-compatible format or return None if invalid. """
-    if not isinstance(date_str, str) or date_str.strip() == "":
-        return None  # Skip empty values
-    
-    try:
-        # Handle ISO 8601 format (e.g., '2020-02-04T04:52:54Z')
-        if "T" in date_str and "Z" in date_str:
-            return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+# STEP 3: Binary label for hypertension
+hypertension_codes = ["I10"]
+conditions["has_hypertension"] = conditions["CODE"].isin(hypertension_codes).astype(int)
+condition_flags = conditions.groupby("PATIENT")["has_hypertension"].max().reset_index()
+condition_flags.rename(columns={"PATIENT": "Id"}, inplace=True)
 
-        # Handle ISO 8601 without 'Z' (e.g., '2020-02-04T04:52:54')
-        if "T" in date_str:
-            return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+# STEP 4: Add all diseases as columns
+disease_df = conditions[["PATIENT", "DESCRIPTION"]].drop_duplicates()
+disease_df["value"] = 1
 
-        # Handle standard date format 'YYYY-MM-DD'
-        return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d %H:%M:%S")
+disease_pivot = disease_df.pivot_table(
+    index="PATIENT",
+    columns="DESCRIPTION",
+    values="value",
+    aggfunc="max",
+    fill_value=0
+).reset_index()
 
-    except ValueError:
-        return None  # Skip invalid values
+disease_pivot.rename(columns={"PATIENT": "Id"}, inplace=True)
 
+# STEP 5: Merge all data
+merged_df = patients_df.merge(obs_pivot, on="Id", how="left") \
+                       .merge(condition_flags, on="Id", how="left") \
+                       .merge(disease_pivot, on="Id", how="left")
 
-def clean_data(df):
-    """ Clean and format the DataFrame before inserting into MySQL. """
-    df = df.replace({np.nan: None})  # Replace NaN with None
+merged_df["has_hypertension"] = merged_df["has_hypertension"].fillna(0)
+merged_df[disease_pivot.columns[1:]] = merged_df[disease_pivot.columns[1:]].fillna(0)
 
-    for col in df.columns:
-        if "date" in col.lower():
-            df[col] = df[col].astype(str).apply(fix_date_format)
-        elif df[col].dtype == object:
-            df[col] = df[col].astype(str).str.strip()  # Ensure it's a string before applying .str
-    return df
+# STEP 6: Feature engineering
+merged_df["AGE"] = pd.to_datetime("today").year - pd.to_datetime(merged_df["BIRTHDATE"]).dt.year
 
-def get_table_columns(cursor, table_name):
-    """ Fetch column names from MySQL table. """
-    cursor.execute(f"SHOW COLUMNS FROM {table_name}")
-    return {row[0] for row in cursor.fetchall()}
+# Optional: Set primary disease label
+if "Hypertensive disorder, systemic arterial (disorder)" in merged_df.columns:
+    merged_df["disease"] = merged_df["Hypertensive disorder, systemic arterial (disorder)"]
+else:
+    merged_df["disease"] = merged_df["has_hypertension"]
 
-def insert_into_mysql(df, table_name, csv_file, cursor):
-    """ Insert cleaned data into MySQL table. """
-    if csv_file in CSV_TABLE_COLUMN_MAPPING:
-        df = df.rename(columns=CSV_TABLE_COLUMN_MAPPING[csv_file])
+# Final selection
+final_df = merged_df[[
+    "AGE", "GENDER", "RACE", "ETHNICITY",
+    "Systolic_BP", "Diastolic_BP", "BMI", "Smoking_Status",
+    "has_hypertension", "disease"
+] + list(disease_pivot.columns[1:])]
 
-    table_columns = get_table_columns(cursor, table_name)
-    df = df[[col for col in df.columns if col in table_columns]]
+# One-hot encode categoricals
+final_df = pd.get_dummies(final_df, columns=["GENDER", "RACE", "ETHNICITY", "Smoking_Status"], drop_first=True)
 
-    df = df.replace({np.nan: None})  # Ensure NaN is replaced with None
+# Drop missing values
+final_df = final_df.dropna()
 
-    cols = ",".join(df.columns)
-    values = ",".join(["%s"] * len(df.columns))
-
-    sql = f"INSERT INTO {table_name} ({cols}) VALUES ({values})"
-
-    data = []
-    for row in df.itertuples(index=False, name=None):
-        data.append(tuple(row))
-
-    try:
-        cursor.executemany(sql, data)
-        print(f"Inserted {len(df)} rows into {table_name}.")
-    except mysql.connector.Error as err:
-        print(f"Error inserting data from {csv_file} into {table_name}: {err}")
-
-def truncate_tables(cursor):
-    """ Truncate all tables in the correct order. """
-    truncate_order = [
-        "treatment_recommendations", "prescriptions", "lab_results",
-        "medical_history", "encounters", "patients"
-    ]
-
-    # Disable foreign key checks to allow truncation
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-    print("Foreign key checks disabled.")
-
-    for table_name in truncate_order:
-        cursor.execute(f"TRUNCATE TABLE {table_name}")
-        print(f"Truncated table: {table_name}")
-
-    # Re-enable foreign key checks after truncation
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
-    print("Foreign key checks enabled.")
-
-def process_csv_files():
-    """ Main function to process CSV files and insert data into MySQL. """
-    try:
-        conn = mysql.connector.connect(**DB_PARAMS)
-        cursor = conn.cursor()
-
-        # Truncate all tables before inserting new data
-        truncate_tables(cursor)
-
-        for csv_file, table_name in CSV_TABLE_MAPPING.items():
-            file_path = os.path.join(CSV_FOLDER, csv_file)
-            if os.path.exists(file_path):
-                print(f"Processing {csv_file} into {table_name}...")
-                df = pd.read_csv(file_path)
-                df = clean_data(df)
-                insert_into_mysql(df, table_name, csv_file, cursor)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        print("Data insertion completed successfully!")
-
-    except mysql.connector.Error as err:
-        print(f"Error: {err}")
-
-if __name__ == "__main__":
-    process_csv_files()
+# Save processed data
+final_df.to_csv("synthea_processed.csv", index=False)
+print("✅ Preprocessing complete. File saved: synthea_processed.csv")
