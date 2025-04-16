@@ -1,5 +1,5 @@
 CREATE TABLE encounters (
-    id VARCHAR(64) PRIMARY KEY AUTO_INCREMENT;
+    id VARCHAR(64) PRIMARY KEY,
     start DATETIME,
     stop DATETIME,
     patient VARCHAR(64),

@@ -1,5 +1,5 @@
 CREATE TABLE patients (
-    id VARCHAR(64) PRIMARY KEY AUTO_INCREMENT;
+    id VARCHAR(64) PRIMARY KEY,
     birthdate DATETIME,
     deathdate DATETIME,
     ssn VARCHAR(20),

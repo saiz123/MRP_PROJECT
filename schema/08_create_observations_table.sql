@@ -8,6 +8,7 @@ CREATE TABLE observations (
     value VARCHAR(100),
     units VARCHAR(20),
     type VARCHAR(50),
+    observation_group VARCHAR(50), -- Added to group related observations (e.g., 'CARDIOVASCULAR', 'METABOLIC')
     FOREIGN KEY (patient) REFERENCES patients(id),
     FOREIGN KEY (encounter) REFERENCES encounters(id)
 );

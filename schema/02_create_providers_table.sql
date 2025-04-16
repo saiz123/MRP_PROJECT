@@ -1,5 +1,5 @@
 CREATE TABLE providers (
-    id VARCHAR(64) PRIMARY KEY AUTO_INCREMENT;
+    id INT PRIMARY KEY AUTO_INCREMENT,
     organization VARCHAR(100),
     name VARCHAR(100),
     gender VARCHAR(10),

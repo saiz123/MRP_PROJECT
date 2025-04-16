@@ -1,89 +1,98 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import StandardScaler
 import joblib
-import os
+from typing import Dict, Any
 
-# Load the preprocessed data
-data_path = os.path.join("..", "synthea_processed.csv")
-df = pd.read_csv(data_path)
+class MultiDiseasePredictor:
+    def __init__(self):
+        self.models = {
+            'CARDIOVASCULAR': RandomForestClassifier(n_estimators=100, random_state=42),
+            'METABOLIC': RandomForestClassifier(n_estimators=100, random_state=42),
+            'RESPIRATORY': RandomForestClassifier(n_estimators=100, random_state=42),
+            'INFECTIOUS': RandomForestClassifier(n_estimators=100, random_state=42)
+        }
+        self.scalers = {}
+        self.feature_names = joblib.load('feature_names.pkl')
+        
+    def preprocess_data(self, data: Dict[str, Any]) -> pd.DataFrame:
+        """Preprocess input data for prediction"""
+        df = pd.DataFrame([data])
+        
+        # Fill missing values with defaults
+        defaults = {
+            'Heart_Rate': 75,
+            'Cholesterol_Total': 200,
+            'Blood_Glucose': 100,
+            'Oxygen_Saturation': 98,
+            'WBC_Count': 7500,
+            'CRP': 1.0
+        }
+        df = df.fillna(defaults)
+        
+        # Scale numerical features
+        numerical_features = [
+            'AGE', 'BMI', 'Systolic_BP', 'Diastolic_BP', 'Heart_Rate',
+            'Cholesterol_Total', 'Blood_Glucose', 'Oxygen_Saturation'
+        ]
+        
+        for feature in numerical_features:
+            if feature in df.columns:
+                df[feature] = df[feature].astype(float)
+        
+        return df
 
-# Drop rows where 'disease' is null (if needed)
-df = df.dropna(subset=["disease"])
+    def predict_diseases(self, patient_data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+        """
+        Predict multiple disease risks for a patient
+        Returns dictionary with predictions for each disease category
+        """
+        df = self.preprocess_data(patient_data)
+        predictions = {}
+        
+        for category, model in self.models.items():
+            # Get relevant features for this category
+            features = self.feature_names[category]
+            X = df[features].values
+            
+            # Scale features if scaler exists
+            if category in self.scalers:
+                X = self.scalers[category].transform(X)
+            
+            # Get prediction probability
+            try:
+                prob = model.predict_proba(X)[0][1] * 100
+            except:
+                prob = 0.0
+            
+            predictions[category] = {
+                'probability': prob,
+                'features_used': features
+            }
+        
+        return predictions
 
-# Define features and label
-relevant_features = [
-    'AGE', 'Systolic_BP', 'Diastolic_BP', 'BMI', 'has_hypertension'
-    # Add more features if needed
-]
+    def save_models(self):
+        """Save trained models and scalers"""
+        for category, model in self.models.items():
+            joblib.dump(model, f'{category.lower()}_model.pkl')
+            if category in self.scalers:
+                joblib.dump(self.scalers[category], f'{category.lower()}_scaler.pkl')
 
-# Extract features and target variable
-X = df[relevant_features]
-y = df["disease"]
+    def load_models(self):
+        """Load trained models and scalers"""
+        for category in self.models.keys():
+            try:
+                self.models[category] = joblib.load(f'{category.lower()}_model.pkl')
+                scaler_path = f'{category.lower()}_scaler.pkl'
+                if os.path.exists(scaler_path):
+                    self.scalers[category] = joblib.load(scaler_path)
+            except FileNotFoundError:
+                print(f"Model files for {category} not found. Using default model.")
 
-# Step 1: Split data using stratified split to maintain class balance
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-
-# Step 2: Check class distribution in training set
-class_distribution = y_train.value_counts()
-print(f"Class distribution in training data: {class_distribution}")
-
-# Initialize RandomForestClassifier
-rf = RandomForestClassifier(n_estimators=100, random_state=42)
-
-# If only one class exists in the training data, use class_weight='balanced'
-if class_distribution.shape[0] == 1:
-    print("Warning: Only one class present in training data. Using class_weight='balanced'.")
-    rf = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
-else:
-    # Apply SMOTE to handle class imbalance if both classes are present
-    smote = SMOTE(random_state=42)
-    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
-    rf.fit(X_train_resampled, y_train_resampled)
-
-# Step 3: Train model (use the appropriate X_train based on the SMOTE step)
-rf.fit(X_train, y_train)
-
-# Step 4: Predictions
-y_pred = rf.predict(X_test)
-
-# Classification report (returns a dictionary)
-classification_rep = classification_report(y_test, y_pred, output_dict=True)
-
-# Debug: Print the classification report dictionary to check its format
-print("Classification Report (as dictionary):", classification_rep)
-
-# Initialize precision and recall variables
-precision_class_0 = classification_rep['0']['precision']
-recall_class_0 = classification_rep['0']['recall']
-
-# Check if class '1' exists in the classification report (only if both classes are present)
-precision_class_1 = recall_class_1 = None
-if '1' in classification_rep:
-    precision_class_1 = classification_rep['1']['precision']
-    recall_class_1 = classification_rep['1']['recall']
-
-# Save the metrics, including precision and recall for both classes
-metrics = {
-    "accuracy": accuracy_score(y_test, y_pred),
-    "classification_report": classification_rep,  # This will be a dictionary
-    "precision_class_0": precision_class_0,  # Precision for class "0"
-    "recall_class_0": recall_class_0,  # Recall for class "0"
-    "precision_class_1": precision_class_1,  # Precision for class "1" (if exists)
-    "recall_class_1": recall_class_1,  # Recall for class "1" (if exists)
-    "confusion_matrix": confusion_matrix(y_test, y_pred)
-}
-
-# Save the model, features, and metrics
-joblib.dump(rf, "random_forest_model.pkl")
-joblib.dump(relevant_features, "feature_names.pkl")
-joblib.dump(metrics, "model_metrics.pkl")
-
-print("\nModel and features saved successfully:")
-print("- Model: random_forest_model.pkl")
-print("- Features: feature_names.pkl")
-print("- Metrics: model_metrics.pkl")
+# Function to be called from the Streamlit app
+def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    predictor = MultiDiseasePredictor()
+    predictor.load_models()
+    return predictor.predict_diseases(patient_data)
