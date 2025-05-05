@@ -15,6 +15,18 @@ from utils import (
     generate_health_recommendations
 )
 
+# Add debugging function to check threshold values
+def debug_patient_values(patient_data):
+    """Helpful debug function to check if patient data would trigger disease conditions"""
+    debug_info = {}
+    # Check flu thresholds
+    debug_info['temp_risk'] = patient_data['Body_Temperature'] > 38.0
+    debug_info['wbc_risk'] = patient_data['WBC_Count'] > 11000
+    debug_info['flu_risk'] = debug_info['temp_risk'] or debug_info['wbc_risk']
+    
+    # Add other disease threshold checks as needed
+    return debug_info
+
 st.set_page_config(page_title="Multi-Disease Risk Predictor", layout="wide")
 
 # Set custom theme and styling

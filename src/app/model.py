@@ -496,6 +496,92 @@ class MultiDiseasePredictor:
             print(f"Error loading unified model: {e}")
             self._create_unified_model()
 
+    def predict_diseases(self, patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Predict multiple diseases for the patient based on their data"""
+        try:
+            # If we don't have a unified model, try to load again
+            if self.unified_model is None:
+                self._load_unified_model()
+                
+                # If still not available, return placeholder predictions
+                if self.unified_model is None:
+                    return self._get_placeholder_predictions()
+            
+            # Prepare patient data as a DataFrame
+            patient_df = pd.DataFrame([patient_data])
+            
+            # Ensure all required features are present
+            for feature in self.all_features:
+                if feature not in patient_df.columns:
+                    patient_df[feature] = 0.0
+            
+            # Select only the features needed for the model
+            patient_features = patient_df[self.unified_model['features']]
+            
+            # Scale the features
+            patient_scaled = self.unified_model['scaler'].transform(patient_features)
+            
+            # Make predictions for each disease
+            results = {}
+            
+            for category, diseases in self.disease_mapping.items():
+                category_results = {}
+                
+                for disease in diseases:
+                    disease_key = f"{category}_{disease}"
+                    if disease_key in self.unified_model['disease_models']:
+                        model = self.unified_model['disease_models'][disease_key]
+                        
+                        # Use probability rather than binary prediction
+                        # Fix here: Get the second class probability (positive class)
+                        if hasattr(model, "predict_proba"):
+                            try:
+                                proba = model.predict_proba(patient_scaled)[0]
+                                if len(proba) > 1:
+                                    probability = proba[1] * 100
+                                else:
+                                    probability = proba[0] * 100
+                            except Exception as e:
+                                print(f"Error in predict_proba for {disease_key}: {e}")
+                                probability = model.predict(patient_scaled)[0] * 100
+                        else:
+                            probability = model.predict(patient_scaled)[0] * 100
+                        
+                        # Special case for flu/influenza - make sure temperature and WBC thresholds are reasonable
+                        if "INFECTIOUS_Flu" in disease_key or "INFECTIOUS_Influenza" in disease_key:
+                            # Only high probability if actual clinical indicators are present
+                            temp_elevated = patient_data.get('Body_Temperature', 37.0) > 38.0
+                            wbc_elevated = patient_data.get('WBC_Count', 7500) > 11000
+                            
+                            # If normal temperature and WBC but high prediction, adjust probability down
+                            if probability > 40 and not (temp_elevated or wbc_elevated):
+                                probability = max(20, probability * 0.5)  # Cap at reasonable baseline
+                        
+                        features_used = self.default_feature_names.get(disease_key, [])
+                        actions = self._get_disease_actions(disease_key, probability)
+                        
+                        category_results[disease] = {
+                            'probability': probability,
+                            'features_used': features_used,
+                            'actions': actions
+                        }
+                
+                # Aggregate probabilities for the category
+                if category_results:
+                    max_prob = max(disease_data['probability'] for disease_data in category_results.values())
+                    avg_prob = sum(disease_data['probability'] for disease_data in category_results.values()) / len(category_results)
+                    
+                    # Use weighted average leaning toward maximum probability
+                    category_prob = (max_prob * 0.7) + (avg_prob * 0.3)
+                    
+                    results[category] = category_results
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error in predict_diseases: {e}")
+            return self._get_placeholder_predictions()
+
 # Function to be called from the Streamlit app
 def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     try:
