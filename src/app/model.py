@@ -580,7 +580,42 @@ class MultiDiseasePredictor:
             
         except Exception as e:
             print(f"Error in predict_diseases: {e}")
-            return self._get_placeholder_predictions()
+            return {
+                'CARDIOVASCULAR': {
+                    'Hypertension': {'probability': 25.0, 'features_used': ['AGE', 'BMI', 'Systolic_BP'], 
+                                    'actions': ['Maintain healthy diet', 'Regular exercise', 'Annual blood pressure check']},
+                    'Heart_Attack': {'probability': 20.0, 'features_used': ['AGE', 'BMI', 'Cholesterol_Total'],
+                                    'actions': ['Maintain healthy lifestyle', 'Regular cardiovascular checkups']}
+                },
+                'INFECTIOUS': {
+                    'Hepatitis': {'probability': 15.0, 'features_used': ['AGE', 'Liver_Enzymes'], 
+                                 'actions': ['Avoid alcohol', 'Get vaccinated', 'Regular liver function tests']},
+                    'Influenza': {'probability': 30.0, 'features_used': ['Body_Temperature', 'WBC_Count'], 
+                                  'actions': ['Rest', 'Stay hydrated', 'Fever reducers if needed']},
+                    'Flu': {'probability': 35.0, 'features_used': ['Body_Temperature', 'WBC_Count', 'CRP'], 
+                            'actions': ['Rest', 'Fluids', 'Consult doctor if symptoms worsen']}
+                },
+                'METABOLIC': {
+                    'Diabetes': {'probability': 28.0, 'features_used': ['Blood_Glucose', 'BMI', 'AGE'], 
+                                'actions': ['Regular blood sugar monitoring', 'Healthy diet', 'Regular exercise']},
+                    'Obesity': {'probability': 32.0, 'features_used': ['BMI', 'Waist_Circumference'], 
+                               'actions': ['Weight management', 'Balanced diet', 'Increase physical activity']}
+                },
+                'RESPIRATORY': {
+                    'Asthma': {'probability': 18.0, 'features_used': ['Respiratory_Rate', 'Oxygen_Saturation', 'FEV1'], 
+                              'actions': ['Avoid triggers', 'Use prescribed inhalers', 'Regular pulmonary check-ups']},
+                    'COPD': {'probability': 22.0, 'features_used': ['FEV1', 'Smoking_Status', 'Oxygen_Saturation'], 
+                            'actions': ['Quit smoking', 'Pulmonary rehabilitation', 'Respiratory medication as prescribed']}
+                },
+                'ONCOLOGY': {
+                    'Breast_Cancer': {'probability': 12.0, 'features_used': ['AGE', 'GENDER_M', 'Family_History'], 
+                                     'actions': ['Regular screening mammograms', 'Clinical breast exams', 'Healthy lifestyle']},
+                    'Lung_Cancer': {'probability': 15.0, 'features_used': ['AGE', 'Smoking_Status', 'FEV1'], 
+                                   'actions': ['Quit smoking', 'Avoid secondhand smoke', 'Consider screening if high risk']},
+                    'Colon_Cancer': {'probability': 14.0, 'features_used': ['AGE', 'Family_History', 'BMI'], 
+                                    'actions': ['Regular colonoscopy after 45', 'High fiber diet', 'Physical activity']}
+                }
+            }
 
 # Function to be called from the Streamlit app
 def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -609,5 +644,32 @@ def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 'Heart_Attack': {'probability': 20.0, 'features_used': ['AGE', 'BMI', 'Cholesterol_Total'],
                                 'actions': ['Maintain healthy lifestyle', 'Regular cardiovascular checkups']}
             },
-            # ...existing code...
+            'INFECTIOUS': {
+                'Hepatitis': {'probability': 15.0, 'features_used': ['AGE', 'Liver_Enzymes'], 
+                             'actions': ['Avoid alcohol', 'Get vaccinated', 'Regular liver function tests']},
+                'Influenza': {'probability': 30.0, 'features_used': ['Body_Temperature', 'WBC_Count'], 
+                              'actions': ['Rest', 'Stay hydrated', 'Fever reducers if needed']},
+                'Flu': {'probability': 35.0, 'features_used': ['Body_Temperature', 'WBC_Count', 'CRP'], 
+                        'actions': ['Rest', 'Fluids', 'Consult doctor if symptoms worsen']}
+            },
+            'METABOLIC': {
+                'Diabetes': {'probability': 28.0, 'features_used': ['Blood_Glucose', 'BMI', 'AGE'], 
+                            'actions': ['Regular blood sugar monitoring', 'Healthy diet', 'Regular exercise']},
+                'Obesity': {'probability': 32.0, 'features_used': ['BMI', 'Waist_Circumference'], 
+                           'actions': ['Weight management', 'Balanced diet', 'Increase physical activity']}
+            },
+            'RESPIRATORY': {
+                'Asthma': {'probability': 18.0, 'features_used': ['Respiratory_Rate', 'Oxygen_Saturation', 'FEV1'], 
+                          'actions': ['Avoid triggers', 'Use prescribed inhalers', 'Regular pulmonary check-ups']},
+                'COPD': {'probability': 22.0, 'features_used': ['FEV1', 'Smoking_Status', 'Oxygen_Saturation'], 
+                        'actions': ['Quit smoking', 'Pulmonary rehabilitation', 'Respiratory medication as prescribed']}
+            },
+            'ONCOLOGY': {
+                'Breast_Cancer': {'probability': 12.0, 'features_used': ['AGE', 'GENDER_M', 'Family_History'], 
+                                 'actions': ['Regular screening mammograms', 'Clinical breast exams', 'Healthy lifestyle']},
+                'Lung_Cancer': {'probability': 15.0, 'features_used': ['AGE', 'Smoking_Status', 'FEV1'], 
+                               'actions': ['Quit smoking', 'Avoid secondhand smoke', 'Consider screening if high risk']},
+                'Colon_Cancer': {'probability': 14.0, 'features_used': ['AGE', 'Family_History', 'BMI'], 
+                                'actions': ['Regular colonoscopy after 45', 'High fiber diet', 'Physical activity']}
+            }
         }
