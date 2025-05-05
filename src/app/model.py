@@ -19,6 +19,15 @@ class MultiDiseasePredictor:
             'INFECTIOUS': ['Hepatitis', 'Influenza', 'Flu']
         }
         
+        # Define paths
+        self.ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.MODELS_DIR = os.path.join(self.ROOT_DIR, 'models')
+        self.FINAL_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'final_model')
+        
+        # Create directories if they don't exist
+        os.makedirs(self.MODELS_DIR, exist_ok=True)
+        os.makedirs(self.FINAL_MODEL_DIR, exist_ok=True)
+        
         # Path to the synthea data
         self.data_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src', 'synthea_processed.csv')
         
@@ -116,7 +125,15 @@ class MultiDiseasePredictor:
         
         # Try to load feature names from file, use defaults if not found
         try:
-            if os.path.exists('feature_names.pkl'):
+            # Check in final_model directory first
+            feature_names_path = os.path.join(self.FINAL_MODEL_DIR, 'feature_names.pkl')
+            if os.path.exists(feature_names_path):
+                self.feature_names = joblib.load(feature_names_path)
+            # Then try models directory
+            elif os.path.exists(os.path.join(self.MODELS_DIR, 'feature_names.pkl')):
+                self.feature_names = joblib.load(os.path.join(self.MODELS_DIR, 'feature_names.pkl'))
+            # Then try app directory (backward compatibility)
+            elif os.path.exists('feature_names.pkl'):
                 self.feature_names = joblib.load('feature_names.pkl')
             else:
                 self.feature_names = self.default_feature_names
@@ -139,8 +156,14 @@ class MultiDiseasePredictor:
     
     def _create_default_files(self):
         """Generate default model files and feature names if they don't exist"""
-        # Save default feature names
-        joblib.dump(self.default_feature_names, 'feature_names.pkl')
+        # Create directories if they don't exist
+        os.makedirs(self.MODELS_DIR, exist_ok=True)
+        os.makedirs(self.FINAL_MODEL_DIR, exist_ok=True)
+        
+        # Save default feature names to all locations
+        joblib.dump(self.default_feature_names, os.path.join(self.FINAL_MODEL_DIR, 'feature_names.pkl'))
+        joblib.dump(self.default_feature_names, os.path.join(self.MODELS_DIR, 'feature_names.pkl'))
+        joblib.dump(self.default_feature_names, 'feature_names.pkl') # For backward compatibility
         
         # Create a unified model file
         self._create_unified_model()
@@ -257,6 +280,8 @@ class MultiDiseasePredictor:
         # Save the unified model
         print("Saving unified model...")
         self.unified_model = unified_model
+        joblib.dump(unified_model, os.path.join(self.FINAL_MODEL_DIR, 'unified_disease_model.pkl'))
+        joblib.dump(unified_model, os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl'))
         joblib.dump(unified_model, 'unified_disease_model.pkl')
     
     def _train_models_with_synthetic_data(self):
@@ -313,7 +338,45 @@ class MultiDiseasePredictor:
                                                (X_df['Systolic_BP'] > 140) | 
                                                (X_df['Diastolic_BP'] > 90)).astype(int)
         
-        # ...existing synthetic data generation code...
+        # Add more disease rules similar to those in create_unified_model.py
+        # Cardiovascular - Heart Attack
+        cholesterol_risk = (X_df['Cholesterol_Total'] > 240).astype(int)
+        y_dict['CARDIOVASCULAR_Heart_Attack'] = ((age_risk + bp_risk + cholesterol_risk >= 2) | 
+                                               (X_df['Systolic_BP'] > 160)).astype(int)
+        
+        # Metabolic - Diabetes
+        glucose_risk = (X_df['Blood_Glucose'] > 126).astype(int) + (X_df['Blood_Glucose'] > 100).astype(int)
+        y_dict['METABOLIC_Diabetes'] = ((glucose_risk + bmi_risk + age_risk >= 2) | 
+                                      (X_df['Blood_Glucose'] > 126)).astype(int)
+        
+        # Metabolic - Obesity
+        y_dict['METABOLIC_Obesity'] = (X_df['BMI'] > 30).astype(int)
+        
+        # Respiratory - Asthma
+        resp_rate_risk = (X_df['Respiratory_Rate'] > 20).astype(int)
+        fev_risk = (X_df['FEV1'] < 2.5).astype(int)
+        y_dict['RESPIRATORY_Asthma'] = (resp_rate_risk + fev_risk >= 1).astype(int)
+        
+        # Respiratory - COPD
+        smoking_risk = (X_df['Smoking_Status'] > 0).astype(int)
+        y_dict['RESPIRATORY_COPD'] = ((fev_risk + smoking_risk + age_risk >= 2) | 
+                                    (X_df['FEV1'] < 2.0)).astype(int)
+        
+        # Oncology diseases
+        family_risk = (X_df['Family_History'] > 0).astype(int)
+        gender_risk = (X_df['GENDER_M'] == 0).astype(int)  # Higher risk for females
+        y_dict['ONCOLOGY_Breast_Cancer'] = ((gender_risk + family_risk + age_risk >= 2)).astype(int)
+        y_dict['ONCOLOGY_Lung_Cancer'] = ((smoking_risk + age_risk + fev_risk >= 2)).astype(int)
+        y_dict['ONCOLOGY_Colon_Cancer'] = ((family_risk + age_risk + bmi_risk >= 2)).astype(int)
+        
+        # Infectious diseases
+        liver_risk = (X_df['Liver_Enzymes'] > 40).astype(int)
+        y_dict['INFECTIOUS_Hepatitis'] = (liver_risk == 1).astype(int)
+        
+        temp_risk = (X_df['Body_Temperature'] > 38.0).astype(int)
+        wbc_risk = (X_df['WBC_Count'] > 11000).astype(int)
+        y_dict['INFECTIOUS_Influenza'] = ((temp_risk + wbc_risk >= 1)).astype(int)
+        y_dict['INFECTIOUS_Flu'] = ((temp_risk + wbc_risk >= 1)).astype(int)
         
         # Fit the unified scaler
         unified_scaler = StandardScaler()
@@ -351,17 +414,41 @@ class MultiDiseasePredictor:
             
             # Add to unified model
             unified_model['disease_models'][disease_key] = model
+            
+            # Save individual models
+            model_path = os.path.join(self.MODELS_DIR, f"{disease_key}_model.pkl")
+            scaler_path = os.path.join(self.MODELS_DIR, f"{disease_key}_scaler.pkl")
+            joblib.dump(model, model_path)
+            joblib.dump(unified_scaler, scaler_path)
         
-        # Save the unified model
+        # Save the unified model to different locations
         self.unified_model = unified_model
-        joblib.dump(unified_model, 'unified_disease_model.pkl')
+        
+        # Save to final_model directory
+        joblib.dump(unified_model, os.path.join(self.FINAL_MODEL_DIR, 'unified_disease_model.pkl'))
+        
+        # Save to models directory
+        joblib.dump(unified_model, os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl'))
+        
+        # Save to app directory for backward compatibility
+        joblib.dump(unified_model, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unified_disease_model.pkl'))
     
     def _load_unified_model(self):
         """Load the unified model if it exists"""
         try:
-            if os.path.exists('unified_disease_model.pkl'):
+            # Try loading from final_model directory first
+            unified_model_path = os.path.join(self.FINAL_MODEL_DIR, 'unified_disease_model.pkl')
+            if os.path.exists(unified_model_path):
+                self.unified_model = joblib.load(unified_model_path)
+                print(f"Loaded unified disease model from {unified_model_path}")
+            # Then try models directory
+            elif os.path.exists(os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl')):
+                self.unified_model = joblib.load(os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl'))
+                print(f"Loaded unified disease model from {self.MODELS_DIR}")
+            # Then try app directory (backward compatibility)
+            elif os.path.exists('unified_disease_model.pkl'):
                 self.unified_model = joblib.load('unified_disease_model.pkl')
-                print("Loaded unified disease model")
+                print("Loaded unified disease model from current directory")
             else:
                 print("Unified model not found, will create default")
                 self._create_unified_model()
@@ -369,192 +456,39 @@ class MultiDiseasePredictor:
             print(f"Error loading unified model: {e}")
             self._create_unified_model()
     
-    # ...existing code for preprocess_data(), predict_with_unified_model(), etc...
-    
-    def predict_diseases(self, patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """
-        Predict risks for specific diseases
-        Returns dictionary with predictions for each disease
-        """
-        df = self.preprocess_data(patient_data)
-        
-        # Use the unified model for predictions if available
-        if isinstance(self.unified_model, dict) and 'disease_models' in self.unified_model:
-            return self.predict_with_unified_model(df)
-        
-        # Otherwise fall back to the old method
-        predictions = {}
-        
-        # Organize predictions by category
-        for category, diseases in self.disease_mapping.items():
-            category_predictions = {}
-            
-            for disease in diseases:
-                model_key = f"{category}_{disease}"
-                # Get relevant features for this disease
-                features = self.feature_names[model_key]
-                
-                # Ensure all required features are present
-                missing_features = [f for f in features if f not in df.columns]
-                for f in missing_features:
-                    df[f] = 0  # Add missing features with default values
-                
-                X = df[features].values
-                
-                # Use rule-based prediction as we don't have individual models anymore
-                prob = self._get_rule_based_probability(disease, patient_data)
-                
-                category_predictions[disease] = {
-                    'probability': prob,
-                    'features_used': features,
-                    'actions': self._get_recommended_actions(disease, prob)
-                }
-            
-            predictions[category] = category_predictions
-        
-        return predictions
-    
-    def preprocess_data(self, data: Dict[str, Any]) -> pd.DataFrame:
-        """Preprocess input data for prediction"""
-        df = pd.DataFrame([data])
-        
-        # Fill missing values with defaults
-        defaults = {
-            'Heart_Rate': 75,
-            'Cholesterol_Total': 200,
-            'Blood_Glucose': 100,
-            'Oxygen_Saturation': 98,
-            'WBC_Count': 7500,
-            'CRP': 1.0,
-            'Respiratory_Rate': 16,
-            'FEV1': 3.0,
-            'Waist_Circumference': 90,
-            'Family_History': 0,
-            'Smoking_Status': 0,
-            'Body_Temperature': 37.0,
-            'Liver_Enzymes': 30
-        }
-        df = df.fillna(defaults)
-        
-        # Scale numerical features
-        numerical_features = [
-            'AGE', 'BMI', 'Systolic_BP', 'Diastolic_BP', 'Heart_Rate',
-            'Cholesterol_Total', 'Blood_Glucose', 'Oxygen_Saturation',
-            'WBC_Count', 'CRP', 'Respiratory_Rate', 'FEV1',
-            'Waist_Circumference', 'Body_Temperature', 'Liver_Enzymes'
-        ]
-        
-        for feature in numerical_features:
-            if feature in df.columns:
-                df[feature] = df[feature].astype(float)
-        
-        return df
-    
-    def predict_with_unified_model(self, df: pd.DataFrame) -> Dict[str, Dict[str, Dict[str, Any]]]:
-        """Make predictions using the unified model"""
-        # Get the features needed by the model
-        model_features = self.unified_model['features']
-        
-        # Prepare input data with all required features
-        input_df = pd.DataFrame(columns=model_features)
-        
-        # Fill with data from input df where available
-        for feature in model_features:
-            if feature in df.columns:
-                input_df[feature] = df[feature]
-            else:
-                # Use 0 as default for missing features
-                input_df[feature] = 0
-        
-        # Scale the input data using the unified scaler
-        try:
-            X_scaled = self.unified_model['scaler'].transform(input_df)
-        except:
-            # If scaling fails, use the data as is
-            X_scaled = input_df.values
-        
-        # Make predictions for each disease
-        predictions = {}
-        
-        for category, diseases in self.disease_mapping.items():
-            category_predictions = {}
-            
-            for disease in diseases:
-                disease_key = f"{category}_{disease}"
-                if disease_key in self.unified_model['disease_models']:
-                    # Get prediction from the unified model
-                    try:
-                        model = self.unified_model['disease_models'][disease_key]
-                        prob = model.predict_proba(X_scaled)[0][1] * 100
-                    except:
-                        # Fall back to rule-based prediction
-                        prob = self._get_rule_based_probability(disease, df.iloc[0].to_dict())
-                else:
-                    # If model missing, use rule-based prediction
-                    prob = self._get_rule_based_probability(disease, df.iloc[0].to_dict())
-                
-                # Get relevant features for this disease from feature_names
-                features = self.feature_names[disease_key]
-                
-                category_predictions[disease] = {
-                    'probability': prob,
-                    'features_used': features,
-                    'actions': self._get_recommended_actions(disease, prob)
-                }
-            
-            predictions[category] = category_predictions
-        
-        return predictions
-    
-    def _get_rule_based_probability(self, disease: str, data: Dict[str, Any]) -> float:
-        """Provide a rule-based probability when model prediction fails"""
-        # Default probability ranges for each disease
-        base_prob = 30.0  # Default base probability
-        
-        if disease == 'Hypertension':
-            if data.get('Systolic_BP', 120) > 140 or data.get('Diastolic_BP', 80) > 90:
-                return 70.0
-            elif data.get('Systolic_BP', 120) > 130 or data.get('Diastolic_BP', 80) > 85:
-                return 50.0
-        
-        # ...existing code...
-        
-        return base_prob
-    
-    def _get_recommended_actions(self, disease: str, risk_probability: float) -> List[str]:
-        """Return recommended actions based on disease and risk level"""
-        # ...existing code...
-        actions = []
-        
-        # Low risk (0-30%)
-        if risk_probability <= 30:
-            if disease == 'Hypertension':
-                actions = ["Maintain healthy diet", "Regular exercise", "Annual blood pressure check"]
-            # ...existing code...
-            
-        # Medium risk (30-70%)
-        elif risk_probability <= 70:
-            # ...existing code...
-            pass
-            
-        # High risk (70-100%)
-        else:
-            # ...existing code...
-            pass
-        
-        return actions
-
     def save_models(self):
         """Save the unified model"""
-        joblib.dump(self.unified_model, 'unified_disease_model.pkl')
-        print("Saved unified disease model")
+        # Create directories if they don't exist
+        os.makedirs(self.MODELS_DIR, exist_ok=True)
+        os.makedirs(self.FINAL_MODEL_DIR, exist_ok=True)
+        
+        # Save to final_model directory
+        joblib.dump(self.unified_model, os.path.join(self.FINAL_MODEL_DIR, 'unified_disease_model.pkl'))
+        
+        # Save to models directory
+        joblib.dump(self.unified_model, os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl'))
+        
+        # Save to app directory for backward compatibility
+        joblib.dump(self.unified_model, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unified_disease_model.pkl'))
+        
+        print("Saved unified disease model to all locations")
 
     def load_models(self):
         """Load the unified model"""
         try:
-            if os.path.exists('unified_disease_model.pkl'):
+            # Try loading from final_model directory first
+            unified_model_path = os.path.join(self.FINAL_MODEL_DIR, 'unified_disease_model.pkl')
+            if os.path.exists(unified_model_path):
+                self.unified_model = joblib.load(unified_model_path)
+                print(f"Loaded unified disease model from {unified_model_path}")
+            # Then try models directory
+            elif os.path.exists(os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl')):
+                self.unified_model = joblib.load(os.path.join(self.MODELS_DIR, 'unified_disease_model.pkl'))
+                print(f"Loaded unified disease model from {self.MODELS_DIR}")
+            # Then try app directory (backward compatibility)
+            elif os.path.exists('unified_disease_model.pkl'):
                 self.unified_model = joblib.load('unified_disease_model.pkl')
-                print("Loaded unified disease model")
+                print("Loaded unified disease model from current directory")
             else:
                 print("Unified model not found, creating default")
                 self._create_unified_model()
@@ -567,9 +501,12 @@ def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     try:
         predictor = MultiDiseasePredictor()
         
-        # Check if unified model exists
-        if not os.path.exists('unified_disease_model.pkl'):
-            print("Unified model not found. Creating default model...")
+        # Check if unified model exists in any of the expected locations
+        final_model_path = os.path.join(predictor.FINAL_MODEL_DIR, 'unified_disease_model.pkl')
+        models_path = os.path.join(predictor.MODELS_DIR, 'unified_disease_model.pkl')
+        
+        if not (os.path.exists(final_model_path) or os.path.exists(models_path) or os.path.exists('unified_disease_model.pkl')):
+            print("Unified model not found in any location. Creating default model...")
             predictor._create_unified_model()
         else:
             predictor.load_models()
