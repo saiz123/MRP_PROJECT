@@ -60,124 +60,39 @@ st.markdown("""
         font-size: 18px;
         color: #1E3045;
     }
+    .summary-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 5px solid #3498db;
+    }
+    .high-risk-card {
+        background-color: #fff8f8;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        border-left: 5px solid #e74c3c;
+    }
+    .medium-risk-card {
+        background-color: #fff8f0;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        border-left: 5px solid #f39c12;
+    }
+    .action-item {
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        border-radius: 5px;
+        background-color: #eaf2f8;
+        border-left: 3px solid #3498db;
+    }
 </style>
 """, unsafe_allow_html=True)
-
-# Model performance metrics (would typically come from model evaluation)
-MODEL_METRICS = {
-    "cardiovascular": {
-        "accuracy": 0.92,
-        "precision": 0.89,
-        "recall": 0.87,
-        "f1_score": 0.88,
-        "auc": 0.94
-    },
-    "cardiovascular-heart-attack": {
-        "accuracy": 0.91,
-        "precision": 0.88,
-        "recall": 0.85,
-        "f1_score": 0.87,
-        "auc": 0.93
-    },
-    "cardiovascular-hypertension": {
-        "accuracy": 0.93,
-        "precision": 0.90,
-        "recall": 0.89,
-        "f1_score": 0.90,
-        "auc": 0.95
-    },
-    "infectious": {
-        "accuracy": 0.89,
-        "precision": 0.85,
-        "recall": 0.82,
-        "f1_score": 0.83,
-        "auc": 0.91
-    },
-    "infectious-flu": {
-        "accuracy": 0.88,
-        "precision": 0.84,
-        "recall": 0.83,
-        "f1_score": 0.84,
-        "auc": 0.90
-    },
-    "infectious-hepatitis": {
-        "accuracy": 0.94,
-        "precision": 0.92,
-        "recall": 0.89,
-        "f1_score": 0.91,
-        "auc": 0.96
-    },
-    "infectious-influenza": {
-        "accuracy": 0.91,
-        "precision": 0.88,
-        "recall": 0.86,
-        "f1_score": 0.87,
-        "auc": 0.92
-    },
-    "metabolic": {
-        "accuracy": 0.90,
-        "precision": 0.87,
-        "recall": 0.84,
-        "f1_score": 0.86,
-        "auc": 0.92
-    },
-    "metabolic-diabetes": {
-        "accuracy": 0.91,
-        "precision": 0.89,
-        "recall": 0.86,
-        "f1_score": 0.88,
-        "auc": 0.94
-    },
-    "metabolic-obesity": {
-        "accuracy": 0.95,
-        "precision": 0.93,
-        "recall": 0.91,
-        "f1_score": 0.92,
-        "auc": 0.97
-    },
-    "oncology-breast-cancer": {
-        "accuracy": 0.93,
-        "precision": 0.91,
-        "recall": 0.88,
-        "f1_score": 0.90,
-        "auc": 0.95
-    },
-    "oncology-colon-cancer": {
-        "accuracy": 0.92,
-        "precision": 0.89,
-        "recall": 0.87,
-        "f1_score": 0.88,
-        "auc": 0.94
-    },
-    "oncology-lung-cancer": {
-        "accuracy": 0.91,
-        "precision": 0.88,
-        "recall": 0.86,
-        "f1_score": 0.87,
-        "auc": 0.93
-    },
-    "respiratory": {
-        "accuracy": 0.91,
-        "precision": 0.88,
-        "recall": 0.86,
-        "f1_score": 0.87,
-        "auc": 0.93
-    },
-    "respiratory-asthma": {
-        "accuracy": 0.93,
-        "precision": 0.91,
-        "recall": 0.89,
-        "f1_score": 0.90,
-        "auc": 0.95
-    },
-    "respiratory-copd": {
-        "accuracy": 0.92,
-        "precision": 0.89,
-        "recall": 0.87,
-        "f1_score": 0.88,
-        "auc": 0.94
-    }
-}
 
 def main():
     st.title("Multi-Disease Risk Prediction System")
@@ -304,192 +219,164 @@ def main():
                         st.markdown("#### Recommended Actions:")
                         for action in disease_data['actions'][:3]:  # Top 3 actions
                             st.markdown(f"✓ {action}")
-                            
-        # Display overall health summary
+        
+        # Enhanced Health Summary Section
         st.header("Health Summary")
         
-        # Find high-risk diseases (probability > 70)
+        # Create containers for high/medium/low risk conditions
         high_risk_diseases = []
+        medium_risk_diseases = []
+        low_risk_diseases = []
+        
+        # Categorize diseases by risk level
         for category, diseases in predictions.items():
             for disease, data in diseases.items():
+                disease_name = disease.replace('_', ' ')
                 if data['probability'] > 70:
-                    high_risk_diseases.append((disease.replace('_', ' '), data['probability']))
+                    high_risk_diseases.append((disease_name, data['probability'], data['actions']))
+                elif data['probability'] > 30:
+                    medium_risk_diseases.append((disease_name, data['probability'], data['actions']))
+                else:
+                    low_risk_diseases.append((disease_name, data['probability'], data['actions']))
         
-        # Display high-risk diseases if any
+        # Calculate overall health score
+        total_conditions = len(high_risk_diseases) + len(medium_risk_diseases) + len(low_risk_diseases)
+        health_score = 100 - (len(high_risk_diseases) * 15 + len(medium_risk_diseases) * 5)
+        health_score = max(10, min(100, health_score))  # Ensure score is between 10 and 100
+        
+        # Create overall health summary card
+        st.markdown(f"""
+        <div class="summary-card">
+            <h3>Overall Health Assessment</h3>
+            <p>Based on your measurements and predicted disease risks:</p>
+            <ul>
+                <li><strong>Health Score:</strong> {health_score}/100</li>
+                <li><strong>High Risk Conditions:</strong> {len(high_risk_diseases)}</li>
+                <li><strong>Medium Risk Conditions:</strong> {len(medium_risk_diseases)}</li>
+                <li><strong>Low Risk Conditions:</strong> {len(low_risk_diseases)}</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display prioritized health concerns
         if high_risk_diseases:
-            st.warning("#### High Risk Conditions:")
-            for disease, prob in high_risk_diseases:
-                st.markdown(f"⚠️ **{disease}** - {prob:.1f}% risk")
-                
-        # Display health recommendations
-        st.subheader("Health Recommendations")
-        
-        # Collect all unique actions from medium and high risk diseases
-        all_actions = set()
-        for category, diseases in predictions.items():
-            for disease, data in diseases.items():
-                if data['probability'] > 30:  # Medium or high risk
-                    all_actions.update(data['actions'])
-        
-        # Group recommendations by category
-        recommendation_categories = {
-            "Lifestyle": [],
-            "Diet & Nutrition": [],
-            "Medical Follow-up": [],
-            "Screening Tests": [],
-            "General": []
-        }
-        
-        # Categorize recommendations
-        for action in all_actions:
-            if any(keyword in action.lower() for keyword in ["exercise", "physical", "activity", "smoking", "alcohol"]):
-                recommendation_categories["Lifestyle"].append(action)
-            elif any(keyword in action.lower() for keyword in ["diet", "eat", "food", "nutrient", "vitamin", "mineral", "weight"]):
-                recommendation_categories["Diet & Nutrition"].append(action)
-            elif any(keyword in action.lower() for keyword in ["doctor", "physician", "consult", "appointment", "medication"]):
-                recommendation_categories["Medical Follow-up"].append(action)
-            elif any(keyword in action.lower() for keyword in ["test", "screen", "monitor", "check"]):
-                recommendation_categories["Screening Tests"].append(action)
-            else:
-                recommendation_categories["General"].append(action)
-        
-        # Display recommendations by category in expandable sections with custom styling
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            for category in ["Lifestyle", "Diet & Nutrition"]:
-                if recommendation_categories[category]:
-                    with st.expander(f"📋 {category} Recommendations", expanded=True):
-                        for action in recommendation_categories[category]:
-                            st.markdown(f"""
-                            <div class="recommendation-item">
-                                <span style="color:#4CAF50">✓</span> {action}
-                            </div>
-                            """, unsafe_allow_html=True)
-        
-        with col2:
-            for category in ["Medical Follow-up", "Screening Tests", "General"]:
-                if recommendation_categories[category]:
-                    with st.expander(f"📋 {category} Recommendations", expanded=True):
-                        for action in recommendation_categories[category]:
-                            st.markdown(f"""
-                            <div class="recommendation-item">
-                                <span style="color:#4CAF50">✓</span> {action}
-                            </div>
-                            """, unsafe_allow_html=True)
-        
-        # Display model performance metrics
-        st.header("Model Performance Metrics")
-        st.write("The following metrics represent the performance of our prediction models on validation data:")
-        
-        # Create tabs for each model category
-        metric_tabs = st.tabs(["Overview"] + list(set([model_name.split('-')[0] for model_name in MODEL_METRICS.keys() if '-' in model_name])))
-        
-        # Overview tab - show average metrics
-        with metric_tabs[0]:
-            st.subheader("Overall Model Performance")
+            st.markdown("### Urgent Health Concerns")
+            st.markdown("These conditions require immediate attention and potential medical consultation:")
             
-            # Calculate average metrics
-            avg_metrics = {
-                "accuracy": sum(m["accuracy"] for m in MODEL_METRICS.values()) / len(MODEL_METRICS),
-                "precision": sum(m["precision"] for m in MODEL_METRICS.values()) / len(MODEL_METRICS),
-                "recall": sum(m["recall"] for m in MODEL_METRICS.values()) / len(MODEL_METRICS),
-                "f1_score": sum(m["f1_score"] for m in MODEL_METRICS.values()) / len(MODEL_METRICS),
-                "auc": sum(m["auc"] for m in MODEL_METRICS.values()) / len(MODEL_METRICS)
-            }
+            for disease_name, prob, actions in high_risk_diseases:
+                st.markdown(f"""
+                <div class="high-risk-card">
+                    <h4>⚠️ {disease_name} - {prob:.1f}% risk</h4>
+                    <p><strong>Key Actions:</strong></p>
+                    <ul>
+                        {"".join([f"<li>{action}</li>" for action in actions[:3]])}
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        if medium_risk_diseases:
+            st.markdown("### Moderate Health Concerns")
+            st.markdown("These conditions should be monitored and preventive steps taken:")
             
-            # Create metric cards in columns
-            metric_cols = st.columns(5)
-            metrics = [
-                ("Accuracy", avg_metrics["accuracy"], "Proportion of correct predictions"),
-                ("Precision", avg_metrics["precision"], "Ability to not label negative samples as positive"),
-                ("Recall", avg_metrics["recall"], "Ability to find all positive samples"),
-                ("F1 Score", avg_metrics["f1_score"], "Harmonic mean of precision and recall"),
-                ("AUC", avg_metrics["auc"], "Area under ROC curve")
-            ]
-            
-            for i, (metric_name, metric_value, description) in enumerate(metrics):
-                with metric_cols[i]:
+            # Use columns to display medium risk conditions
+            cols = st.columns(2)
+            for idx, (disease_name, prob, actions) in enumerate(medium_risk_diseases):
+                with cols[idx % 2]:
                     st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-title">{metric_name}</div>
-                        <div class="metric-value">{metric_value:.2f}</div>
-                        <div>{description}</div>
+                    <div class="medium-risk-card">
+                        <h4>⚠️ {disease_name} - {prob:.1f}% risk</h4>
+                        <p><strong>Key Actions:</strong></p>
+                        <ul>
+                            {"".join([f"<li>{action}</li>" for action in actions[:2]])}
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Compile top priority personalized actions
+        st.markdown("### Top Priority Health Actions")
+        
+        # Collect all actions from high and medium risk diseases
+        all_actions = []
+        for _, _, actions in high_risk_diseases:
+            all_actions.extend([(action, 2) for action in actions])  # Weight 2 for high risk
+            
+        for _, _, actions in medium_risk_diseases:
+            all_actions.extend([(action, 1) for action in actions])  # Weight 1 for medium risk
+        
+        # Count action frequency weighted by risk
+        action_weights = {}
+        for action, weight in all_actions:
+            if action in action_weights:
+                action_weights[action] += weight
+            else:
+                action_weights[action] = weight
+        
+        # Sort actions by weight and display top ones
+        top_actions = sorted(action_weights.items(), key=lambda x: x[1], reverse=True)
+        
+        if top_actions:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                for action, _ in top_actions[:min(5, len(top_actions))]:
+                    st.markdown(f"""
+                    <div class="action-item">
+                        <strong>✓</strong> {action}
                     </div>
                     """, unsafe_allow_html=True)
             
-            st.markdown("""
-            **About these metrics:**
-            - **Accuracy**: The ratio of correctly predicted observations to the total observations.
-            - **Precision**: The ratio of correctly predicted positive observations to the total predicted positive observations.
-            - **Recall**: The ratio of correctly predicted positive observations to all observations in the actual class.
-            - **F1 Score**: The weighted average of Precision and Recall.
-            - **AUC**: Area under the ROC Curve - measures the model's ability to distinguish between classes.
-            """)
+            with col2:
+                for action, _ in top_actions[min(5, len(top_actions)):min(10, len(top_actions))]:
+                    st.markdown(f"""
+                    <div class="action-item">
+                        <strong>✓</strong> {action}
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No specific health actions identified. Maintain your healthy lifestyle!")
         
-        # Category-specific tabs
-        for i, category in enumerate(set([model_name.split('-')[0] for model_name in MODEL_METRICS.keys() if '-' in model_name])):
-            with metric_tabs[i+1]:
-                st.subheader(f"{category.title()} Models Performance")
-                
-                # Get models for this category
-                category_models = {model_name: metrics for model_name, metrics in MODEL_METRICS.items() 
-                                  if model_name.startswith(category) and model_name != category}
-                
-                # Add parent category model
-                if category in MODEL_METRICS:
-                    category_models[category] = MODEL_METRICS[category]
-                
-                # Display metrics for each model in this category
-                for model_name, metrics in category_models.items():
-                    display_name = model_name.replace(f"{category}-", "").replace("-", " ").replace("_", " ").title()
-                    if model_name == category:
-                        display_name = f"{category.title()} (General)"
-                    
-                    st.markdown(f"### {display_name}")
-                    
-                    metric_cols = st.columns(5)
-                    with metric_cols[0]:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">Accuracy</div>
-                            <div class="metric-value">{metrics['accuracy']:.2f}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with metric_cols[1]:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">Precision</div>
-                            <div class="metric-value">{metrics['precision']:.2f}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with metric_cols[2]:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">Recall</div>
-                            <div class="metric-value">{metrics['recall']:.2f}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with metric_cols[3]:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">F1 Score</div>
-                            <div class="metric-value">{metrics['f1_score']:.2f}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with metric_cols[4]:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">AUC</div>
-                            <div class="metric-value">{metrics['auc']:.2f}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    st.markdown("---")
+        # Personalized advice based on measurements
+        st.markdown("### Personalized Health Advice")
+        
+        # Age-specific advice
+        if patient_data["AGE"] > 60:
+            st.markdown("""
+            <div class="action-item">
+                <strong>Age-related:</strong> Consider bone density screening and regular hearing/vision checks.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Blood pressure advice
+        if patient_data["Systolic_BP"] > 130 or patient_data["Diastolic_BP"] > 85:
+            st.markdown("""
+            <div class="action-item">
+                <strong>Blood Pressure:</strong> Monitor your blood pressure regularly and consider reducing sodium intake.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # BMI advice
+        if patient_data["BMI"] > 30:
+            st.markdown("""
+            <div class="action-item">
+                <strong>Weight Management:</strong> Consider consulting with a nutritionist for a personalized weight management plan.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Smoking advice
+        if patient_data["Smoking_Status"] == 2:
+            st.markdown("""
+            <div class="action-item">
+                <strong>Smoking:</strong> Quitting smoking is one of the most impactful steps you can take for your health. Consider smoking cessation programs.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Glucose advice
+        if patient_data["Blood_Glucose"] > 100:
+            st.markdown("""
+            <div class="action-item">
+                <strong>Blood Sugar:</strong> Your blood glucose is elevated. Consider reducing simple carbohydrates and increasing physical activity.
+            </div>
+            """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
