@@ -533,7 +533,6 @@ class MultiDiseasePredictor:
                         model = self.unified_model['disease_models'][disease_key]
                         
                         # Use probability rather than binary prediction
-                        # Fix here: Get the second class probability (positive class)
                         if hasattr(model, "predict_proba"):
                             try:
                                 proba = model.predict_proba(patient_scaled)[0]
@@ -547,7 +546,15 @@ class MultiDiseasePredictor:
                         else:
                             probability = model.predict(patient_scaled)[0] * 100
                         
-                        # Special case for flu/influenza - make sure temperature and WBC thresholds are reasonable
+                        # Apply gender-specific adjustments for certain conditions
+                        is_male = patient_data.get('GENDER_M', 0) == 1
+                        
+                        # Special case: Breast cancer risk should be very low for males
+                        if disease_key == "ONCOLOGY_Breast_Cancer" and is_male:
+                            # Male breast cancer is rare (less than 1% of all cases)
+                            probability = min(probability * 0.01, 5.0)
+                        
+                        # Special case for flu/influenza - adjust based on actual symptoms
                         if "INFECTIOUS_Flu" in disease_key or "INFECTIOUS_Influenza" in disease_key:
                             # Only high probability if actual clinical indicators are present
                             temp_elevated = patient_data.get('Body_Temperature', 37.0) > 38.0
@@ -555,7 +562,47 @@ class MultiDiseasePredictor:
                             
                             # If normal temperature and WBC but high prediction, adjust probability down
                             if probability > 40 and not (temp_elevated or wbc_elevated):
-                                probability = max(20, probability * 0.5)  # Cap at reasonable baseline
+                                probability = max(10.0, probability * 0.3)
+                        
+                        # Adjust hypertension based on actual blood pressure values
+                        if disease_key == "CARDIOVASCULAR_Hypertension":
+                            systolic = patient_data.get('Systolic_BP', 120)
+                            diastolic = patient_data.get('Diastolic_BP', 80)
+                            
+                            if systolic < 120 and diastolic < 80 and probability > 30:
+                                # Normal blood pressure
+                                probability = max(10.0, probability * 0.5)
+                            elif (systolic >= 140 or diastolic >= 90) and probability < 50:
+                                # Clinical hypertension
+                                probability = min(80.0, probability * 1.5)
+                        
+                        # Adjust diabetes prediction based on blood glucose
+                        if disease_key == "METABOLIC_Diabetes":
+                            glucose = patient_data.get('Blood_Glucose', 100)
+                            
+                            if glucose < 100 and probability > 25:
+                                # Normal glucose
+                                probability = max(5.0, probability * 0.4)
+                            elif glucose > 126 and probability < 60:
+                                # High glucose indicating potential diabetes
+                                probability = min(85.0, probability * 1.5)
+                        
+                        # Adjust obesity prediction based on actual BMI
+                        if disease_key == "METABOLIC_Obesity":
+                            bmi = patient_data.get('BMI', 25.0)
+                            
+                            if bmi < 25.0 and probability > 15:
+                                # Normal BMI
+                                probability = max(5.0, probability * 0.3)
+                            elif bmi >= 30.0 and probability < 70:
+                                # Clinically obese
+                                probability = min(95.0, probability * 1.5)
+                        
+                        # Make final adjustments based on age
+                        age = patient_data.get('AGE', 50)
+                        if age < 30 and probability > 15 and disease_key not in ["METABOLIC_Obesity", "RESPIRATORY_Asthma"]:
+                            # Lower risk for young patients for most conditions
+                            probability = max(5.0, probability * 0.7)
                         
                         features_used = self.default_feature_names.get(disease_key, [])
                         actions = self._get_disease_actions(disease_key, probability)
@@ -566,56 +613,199 @@ class MultiDiseasePredictor:
                             'actions': actions
                         }
                 
-                # Aggregate probabilities for the category
+                # Add the category results to the overall results
                 if category_results:
-                    max_prob = max(disease_data['probability'] for disease_data in category_results.values())
-                    avg_prob = sum(disease_data['probability'] for disease_data in category_results.values()) / len(category_results)
-                    
-                    # Use weighted average leaning toward maximum probability
-                    category_prob = (max_prob * 0.7) + (avg_prob * 0.3)
-                    
                     results[category] = category_results
             
             return results
             
         except Exception as e:
             print(f"Error in predict_diseases: {e}")
-            return {
-                'CARDIOVASCULAR': {
-                    'Hypertension': {'probability': 25.0, 'features_used': ['AGE', 'BMI', 'Systolic_BP'], 
-                                    'actions': ['Maintain healthy diet', 'Regular exercise', 'Annual blood pressure check']},
-                    'Heart_Attack': {'probability': 20.0, 'features_used': ['AGE', 'BMI', 'Cholesterol_Total'],
-                                    'actions': ['Maintain healthy lifestyle', 'Regular cardiovascular checkups']}
+            # Return gender-appropriate default predictions in case of error
+            is_male = patient_data.get('GENDER_M', 0) == 1
+            
+            return self._get_default_predictions(is_male)
+
+    def _get_disease_actions(self, disease_key, probability):
+        """Get relevant actions/recommendations based on disease and risk level"""
+        # Common recommendations by disease
+        actions = {
+            'CARDIOVASCULAR_Hypertension': [
+                'Maintain healthy diet low in sodium',
+                'Regular exercise (30+ minutes daily)',
+                'Annual blood pressure check',
+                'Limit alcohol consumption',
+                'Maintain healthy weight'
+            ],
+            'CARDIOVASCULAR_Heart_Attack': [
+                'Maintain healthy cholesterol levels',
+                'Regular cardiovascular checkups',
+                'Consider heart-healthy Mediterranean diet',
+                'Manage stress levels',
+                'Know warning signs of heart attack'
+            ],
+            'METABOLIC_Diabetes': [
+                'Regular blood sugar monitoring',
+                'Healthy balanced diet low in simple carbs',
+                'Regular exercise',
+                'Maintain healthy weight',
+                'Annual eye examination'
+            ],
+            'METABOLIC_Obesity': [
+                'Weight management program',
+                'Balanced diet rich in vegetables and fruits',
+                'Increased physical activity',
+                'Consider meeting with nutritionist',
+                'Set realistic weight loss goals'
+            ],
+            'RESPIRATORY_Asthma': [
+                'Avoid known triggers',
+                'Use prescribed inhalers as directed',
+                'Regular pulmonary check-ups',
+                'Create asthma action plan',
+                'Monitor peak flow readings'
+            ],
+            'RESPIRATORY_COPD': [
+                'Quit smoking immediately',
+                'Pulmonary rehabilitation',
+                'Respiratory medication as prescribed',
+                'Annual flu vaccination',
+                'Avoid air pollutants and irritants'
+            ],
+            'ONCOLOGY_Breast_Cancer': [
+                'Regular mammograms (if female)',
+                'Clinical breast exams',
+                'Maintain healthy lifestyle',
+                'Know family history',
+                'Monthly breast self-exams (if female)'
+            ],
+            'ONCOLOGY_Lung_Cancer': [
+                'Quit smoking immediately',
+                'Avoid secondhand smoke',
+                'Consider screening if high risk',
+                'Test home for radon',
+                'Protect yourself from carcinogens at work'
+            ],
+            'ONCOLOGY_Colon_Cancer': [
+                'Regular colonoscopy after 45',
+                'High fiber diet',
+                'Regular physical activity',
+                'Limit red and processed meat',
+                'Know warning signs of colorectal cancer'
+            ],
+            'INFECTIOUS_Hepatitis': [
+                'Avoid alcohol consumption',
+                'Get vaccinated for hepatitis A and B',
+                'Regular liver function tests',
+                'Practice good hygiene',
+                'Follow safe sex practices'
+            ],
+            'INFECTIOUS_Influenza': [
+                'Get annual flu vaccination',
+                'Practice good hand hygiene',
+                'Rest if symptomatic',
+                'Stay hydrated',
+                'Consider antiviral medication if high risk'
+            ],
+            'INFECTIOUS_Flu': [
+                'Rest and recover',
+                'Stay hydrated',
+                'Consult doctor if symptoms worsen',
+                'Use over-the-counter medications for symptom relief',
+                'Isolate to prevent spread'
+            ]
+        }
+        
+        # Return the appropriate actions based on disease type
+        if disease_key in actions:
+            return actions[disease_key]
+        else:
+            # Generic recommendations if specific ones aren't found
+            return [
+                'Maintain a healthy lifestyle',
+                'Regular medical check-ups',
+                'Balanced diet and exercise',
+                'Avoid tobacco and limit alcohol',
+                'Get adequate sleep and manage stress'
+            ]
+
+    def _get_default_predictions(self, is_male=True):
+        """Return default predictions with appropriate gender-based risk factors"""
+        default_predictions = {
+            'CARDIOVASCULAR': {
+                'Hypertension': {
+                    'probability': 20.0 if is_male else 15.0, 
+                    'features_used': ['AGE', 'BMI', 'Systolic_BP'], 
+                    'actions': ['Maintain healthy diet low in sodium', 'Regular exercise', 'Annual blood pressure check']
                 },
-                'INFECTIOUS': {
-                    'Hepatitis': {'probability': 15.0, 'features_used': ['AGE', 'Liver_Enzymes'], 
-                                 'actions': ['Avoid alcohol', 'Get vaccinated', 'Regular liver function tests']},
-                    'Influenza': {'probability': 30.0, 'features_used': ['Body_Temperature', 'WBC_Count'], 
-                                  'actions': ['Rest', 'Stay hydrated', 'Fever reducers if needed']},
-                    'Flu': {'probability': 35.0, 'features_used': ['Body_Temperature', 'WBC_Count', 'CRP'], 
-                            'actions': ['Rest', 'Fluids', 'Consult doctor if symptoms worsen']}
+                'Heart_Attack': {
+                    'probability': 18.0 if is_male else 12.0, 
+                    'features_used': ['AGE', 'BMI', 'Cholesterol_Total'],
+                    'actions': ['Maintain healthy lifestyle', 'Regular cardiovascular checkups', 'Know warning signs']
+                }
+            },
+            'INFECTIOUS': {
+                'Hepatitis': {
+                    'probability': 8.0, 
+                    'features_used': ['AGE', 'Liver_Enzymes'], 
+                    'actions': ['Avoid alcohol', 'Get vaccinated', 'Regular liver function tests']
                 },
-                'METABOLIC': {
-                    'Diabetes': {'probability': 28.0, 'features_used': ['Blood_Glucose', 'BMI', 'AGE'], 
-                                'actions': ['Regular blood sugar monitoring', 'Healthy diet', 'Regular exercise']},
-                    'Obesity': {'probability': 32.0, 'features_used': ['BMI', 'Waist_Circumference'], 
-                               'actions': ['Weight management', 'Balanced diet', 'Increase physical activity']}
+                'Influenza': {
+                    'probability': 15.0, 
+                    'features_used': ['Body_Temperature', 'WBC_Count'], 
+                    'actions': ['Rest', 'Stay hydrated', 'Fever reducers if needed']
                 },
-                'RESPIRATORY': {
-                    'Asthma': {'probability': 18.0, 'features_used': ['Respiratory_Rate', 'Oxygen_Saturation', 'FEV1'], 
-                              'actions': ['Avoid triggers', 'Use prescribed inhalers', 'Regular pulmonary check-ups']},
-                    'COPD': {'probability': 22.0, 'features_used': ['FEV1', 'Smoking_Status', 'Oxygen_Saturation'], 
-                            'actions': ['Quit smoking', 'Pulmonary rehabilitation', 'Respiratory medication as prescribed']}
+                'Flu': {
+                    'probability': 12.0, 
+                    'features_used': ['Body_Temperature', 'WBC_Count', 'CRP'], 
+                    'actions': ['Rest', 'Fluids', 'Consult doctor if symptoms worsen']
+                }
+            },
+            'METABOLIC': {
+                'Diabetes': {
+                    'probability': 15.0, 
+                    'features_used': ['Blood_Glucose', 'BMI', 'AGE'], 
+                    'actions': ['Regular blood sugar monitoring', 'Healthy diet', 'Regular exercise']
                 },
-                'ONCOLOGY': {
-                    'Breast_Cancer': {'probability': 12.0, 'features_used': ['AGE', 'GENDER_M', 'Family_History'], 
-                                     'actions': ['Regular screening mammograms', 'Clinical breast exams', 'Healthy lifestyle']},
-                    'Lung_Cancer': {'probability': 15.0, 'features_used': ['AGE', 'Smoking_Status', 'FEV1'], 
-                                   'actions': ['Quit smoking', 'Avoid secondhand smoke', 'Consider screening if high risk']},
-                    'Colon_Cancer': {'probability': 14.0, 'features_used': ['AGE', 'Family_History', 'BMI'], 
-                                    'actions': ['Regular colonoscopy after 45', 'High fiber diet', 'Physical activity']}
+                'Obesity': {
+                    'probability': 20.0, 
+                    'features_used': ['BMI', 'Waist_Circumference'], 
+                    'actions': ['Weight management', 'Balanced diet', 'Increase physical activity']
+                }
+            },
+            'RESPIRATORY': {
+                'Asthma': {
+                    'probability': 10.0 if is_male else 12.0, 
+                    'features_used': ['Respiratory_Rate', 'Oxygen_Saturation', 'FEV1'], 
+                    'actions': ['Avoid triggers', 'Use prescribed inhalers', 'Regular pulmonary check-ups']
+                },
+                'COPD': {
+                    'probability': 15.0 if is_male else 10.0, 
+                    'features_used': ['FEV1', 'Smoking_Status', 'Oxygen_Saturation'], 
+                    'actions': ['Quit smoking', 'Pulmonary rehabilitation', 'Respiratory medication as prescribed']
+                }
+            },
+            'ONCOLOGY': {
+                'Breast_Cancer': {
+                    # Males have very low risk of breast cancer (about 1% of all breast cancer cases)
+                    'probability': 0.5 if is_male else 12.0, 
+                    'features_used': ['AGE', 'GENDER_M', 'Family_History'], 
+                    'actions': ['Know family history'] if is_male else ['Regular mammograms', 'Clinical breast exams', 'Monthly self-exams']
+                },
+                'Lung_Cancer': {
+                    'probability': 10.0, 
+                    'features_used': ['AGE', 'Smoking_Status', 'FEV1'], 
+                    'actions': ['Quit smoking', 'Avoid secondhand smoke', 'Consider screening if high risk']
+                },
+                'Colon_Cancer': {
+                    'probability': 8.0, 
+                    'features_used': ['AGE', 'Family_History', 'BMI'], 
+                    'actions': ['Regular colonoscopy after 45', 'High fiber diet', 'Physical activity']
                 }
             }
+        }
+        
+        return default_predictions
 
 # Function to be called from the Streamlit app
 def predict_diseases(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
